@@ -1,11 +1,5 @@
-This is a research space to think about implementation of different data structures, and other commonly used tools, its an incubator for other ideas
+------------
+ microcache
+------------
 
-
-(1) Implementation of a cache
-  * DS for cache
-  * Formal methods for cache
-  * TCP usage of cache
-
-(2) Implementation of a ring buffer
-
-(3) Implementation of a packfile
+(Just learning). Need a cache thats very fast, works on metal across distibuted devices? Use memcached.
