@@ -1,7 +1,7 @@
-mod cache;
+mod hashtable;
 
 fn main() {
-    let mut m = cache::Map::new();
+    let mut m = hashtable::Map::new();
     m.set("Bob".as_bytes(), &100_usize.to_le_bytes());
     m.set("Foo".as_bytes(), &10_usize.to_le_bytes());
     m.set("Bar".as_bytes(), &200_usize.to_le_bytes());
