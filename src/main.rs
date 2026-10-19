@@ -9,5 +9,6 @@ fn main() {
     m.set("Bob".as_bytes(), &400_usize.to_le_bytes());
     println!("{:#?}", m.array);
 
-    println!("{:#?}", m.get("Baz".as_bytes()));
+    println!("{:#?}", m.get("Baz".as_bytes()).unwrap());
+    println!("{:#?}", m.get("Miss".as_bytes()));
 }

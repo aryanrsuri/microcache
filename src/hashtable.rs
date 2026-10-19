@@ -40,7 +40,7 @@ impl Map {
     }
 
     pub fn set(&mut self, key: &[u8], value: &[u8]) {
-        if (self.fill as f64 / self.array.len() as f64) > 0.5 {
+        if (self.fill as f64 / self.array.len() as f64) > 0.650 {
             self.resize();
         }
         let h = self.hash(key);
@@ -55,13 +55,19 @@ impl Map {
             }
             i = (i + 1) % self.array.len();
         }
-        let b = Block {
-            hash: h,
-            version: self.increment(),
-            key: key.to_vec(),
-            value: value.to_vec(),
-        };
-        self.array[i] = Some(b);
+        let version = self.increment();
+        if let Some(block) = &mut self.array[i] {
+            block.version = version;
+            block.value.clear();
+            block.value.extend_from_slice(value);
+        } else {
+            self.array[i] = Some(Block {
+                hash: h,
+                version: version,
+                key: key.to_vec(),
+                value: value.to_vec(),
+            })
+        }
         if !overwrite {
             self.fill += 1;
         }
@@ -147,24 +153,43 @@ mod tests {
     #[test]
     #[ignore = "run explicitly in release mode"]
     fn can_perf() {
-        let scales = [1_u64, 10, 100, 1_000, 10_000, 100_000];
+        let scales = [1_u64, 10, 100, 1_000, 10_000, 100_000, 1_000_000];
+        let mut timings = vec![[std::time::Duration::ZERO; 5]; scales.len()];
 
-        for scale in scales {
-            let mut map = Map::new();
-            let start = std::time::Instant::now();
+        for iteration in 0..5 {
+            for (scale_index, scale) in scales.into_iter().enumerate() {
+                let mut map = Map::new();
+                let start = std::time::Instant::now();
 
-            for i in 0..scale {
-                let bytes = i.to_le_bytes();
-                map.set(&bytes, &bytes);
+                for i in 0..scale {
+                    let bytes = i.to_le_bytes();
+                    map.set(&bytes, &bytes);
+                }
+
+                std::hint::black_box(&map);
+                let elapsed = start.elapsed();
+                timings[scale_index][iteration] = elapsed;
+
+                println!(
+                    "run={} scale={scale:>7} total={elapsed:?} avg/set={:?}",
+                    iteration + 1,
+                    elapsed / scale as u32,
+                );
             }
+        }
 
-            std::hint::black_box(&map);
-            let elapsed = start.elapsed();
-
-            println!(
-                "scale={scale:>6} total={elapsed:?} avg/set={:?}",
-                elapsed / scale as u32,
-            );
+        println!("\nSummary (5 runs per scale)");
+        println!(
+            "{:>10} {:>14} {:>14} {:>14} {:>14}",
+            "Scale", "Mean total", "Min total", "Max total", "Mean/set (ns)",
+        );
+        for (scale, samples) in scales.into_iter().zip(timings) {
+            let total = samples.iter().copied().sum::<std::time::Duration>();
+            let mean = total / samples.len() as u32;
+            let per_set = total.as_secs_f64() * 1e9 / samples.len() as f64 / scale as f64;
+            let min = samples.iter().min().unwrap();
+            let max = samples.iter().max().unwrap();
+            println!("{scale:>10} {mean:>14.3?} {min:>14.3?} {max:>14.3?} {per_set:>14.3}",);
         }
     }
 }
