@@ -10,7 +10,7 @@ pub struct Block {
 pub struct Map {
     pub array: Vec<Option<Block>>,
     version: [u8; 10],
-    a: f64,
+    fill: u64,
 }
 
 impl Map {
@@ -18,38 +18,39 @@ impl Map {
         return Map {
             array: vec![None; 3],
             version: [0; 10],
-            a: 0.,
+            fill: 0,
         };
     }
 
-    fn hash(&mut self, key: &[u8]) -> u64 {
-        let mut h: u64 = 0xcbf29ce484222325;
-        for &c in key {
-            h = (h ^ c as u64).wrapping_mul(0x100000001b3);
+    pub fn get(&mut self, key: &[u8]) -> Option<&Block> {
+        let h = self.hash(key);
+        let k = self.index(h);
+        let mut i = k;
+        while let Some(block) = &self.array[i] {
+            if block.hash == h && block.key == key {
+                return Some(block);
+            }
+            i = (i + 1) % self.array.len();
+            if i == k {
+                break;
+            }
         }
-        return h;
-    }
-
-    /// WIP
-    pub fn get(&mut self, key: &[u8]) -> Option<Block> {
-        let i = self.hash(key) as usize % self.array.len();
-
-        while self.array[i].is_some() {}
 
         None
     }
 
     pub fn set(&mut self, key: &[u8], value: &[u8]) {
-        if self.a > 0.5 {
-            self.array.resize(2 * self.array.len(), None);
+        if (self.fill as f64 / self.array.len() as f64) > 0.5 {
+            self.resize();
         }
         let h = self.hash(key);
-        let k = h as usize % self.array.len();
+        let k = self.index(h);
+        let mut overwrite = false;
         let mut i = k;
 
-        while self.array[i].is_some() {
-            // FIXME: Is this really the most perf way to do this?
-            if self.array[i].to_owned().unwrap().hash == h {
+        while let Some(block) = &self.array[i] {
+            if block.hash == h && block.key == key {
+                overwrite = true;
                 break;
             }
             i = (i + 1) % self.array.len();
@@ -61,14 +62,40 @@ impl Map {
             value: value.to_vec(),
         };
         self.array[i] = Some(b);
-        self.a = self.array.iter().filter(|x| x.is_some()).count() as f64 / self.array.len() as f64;
+        if !overwrite {
+            self.fill += 1;
+        }
+    }
+
+    fn resize(&mut self) {
+        let first = std::mem::take(&mut self.array);
+        self.array.resize(first.len() * 2, None);
+        for block in first.into_iter().flatten() {
+            let mut i = self.index(block.hash);
+            while self.array[i].is_some() {
+                i = (i + 1) % self.array.len();
+            }
+            self.array[i] = Some(block)
+        }
+    }
+
+    fn index(&self, hash: u64) -> usize {
+        hash as usize % self.array.len()
+    }
+
+    fn hash(&self, key: &[u8]) -> u64 {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for &c in key {
+            h = (h ^ c as u64).wrapping_mul(0x100000001b3);
+        }
+        return h;
     }
 
     fn increment(&mut self) -> [u8; 10] {
         let i = self.version[..8]
             .iter()
             .rposition(|&b| b != u8::MAX)
-            .expect("version exauhsted");
+            .expect("version exhausted");
         self.version[i] += 1;
         self.version[i + 1..8].fill(0);
         self.version
@@ -88,5 +115,56 @@ impl std::fmt::Debug for Block {
             .field("key", &hex(&self.key))
             .field("value", &hex(&self.value))
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Map;
+
+    #[test]
+    fn can_get() {
+        let mut map = Map::new();
+        map.set(b"Bob", b"100");
+        assert_eq!(map.get(b"Bob").unwrap().value, b"100");
+        assert!(map.get(b"None").is_none());
+    }
+
+    #[test]
+    fn can_resize() {
+        let mut map = Map::new();
+        map.set(b"a", b"old");
+        map.set(b"b", b"other");
+        map.set(b"a", b"new");
+
+        assert_eq!(map.get(b"a").unwrap().value, b"new");
+        assert_eq!(map.get(b"b").unwrap().value, b"other");
+
+        let occupied = map.array.iter().flatten().count();
+        assert_eq!(occupied, 2);
+    }
+
+    #[test]
+    #[ignore = "run explicitly in release mode"]
+    fn can_perf() {
+        let scales = [1_u64, 10, 100, 1_000, 10_000, 100_000];
+
+        for scale in scales {
+            let mut map = Map::new();
+            let start = std::time::Instant::now();
+
+            for i in 0..scale {
+                let bytes = i.to_le_bytes();
+                map.set(&bytes, &bytes);
+            }
+
+            std::hint::black_box(&map);
+            let elapsed = start.elapsed();
+
+            println!(
+                "scale={scale:>6} total={elapsed:?} avg/set={:?}",
+                elapsed / scale as u32,
+            );
+        }
     }
 }

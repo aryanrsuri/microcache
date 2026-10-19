@@ -8,4 +8,6 @@ fn main() {
     m.set("Baz".as_bytes(), &140_usize.to_le_bytes());
     m.set("Bob".as_bytes(), &400_usize.to_le_bytes());
     println!("{:#?}", m.array);
+
+    println!("{:#?}", m.get("Baz".as_bytes()));
 }

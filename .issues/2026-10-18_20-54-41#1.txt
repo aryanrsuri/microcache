@@ -1,0 +1,8 @@
+I=1
+D=2026-10-18_20-54-41
+S=DONE
+T=core cache methods
+
+* new()
+* get()
+* set()
