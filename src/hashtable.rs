@@ -150,7 +150,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "run explicitly in release mode"]
     fn can_perf() {
         let scales = [1_u64, 10, 100, 1_000, 10_000, 100_000, 1_000_000];
         let mut timings = vec![[std::time::Duration::ZERO; 5]; scales.len()];
