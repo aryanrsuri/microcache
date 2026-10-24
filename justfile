@@ -1,6 +1,6 @@
 build:
-	cargo build
+	cargo build --release
 run:
-  cargo run
+  cargo run --release
 test:
-  cargo test --color always --message-format human -- --nocapture --test-threads=1
+  cargo test --release --color always --message-format human -- --nocapture --test-threads=1
