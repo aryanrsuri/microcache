@@ -3,7 +3,7 @@ build:
 run:
   cargo run
 test:
-  cargo test can_perf -- --ignored --nocapture
+  cargo test
 
 issuepack:
   uv run --no-project ~/programming/issuepack/issue.py

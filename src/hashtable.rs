@@ -41,37 +41,35 @@ impl Map {
 
     pub fn set(&mut self, key: &[u8], value: &[u8]) {
         let h = self.hash(key);
-        let k = self.index(h);
-        let mut overwrite = false;
-        let mut i = k;
+        let version = self.increment();
+        let mut i = self.index(h);
 
-        // Check `overwrite` first before a resize
-        while let Some(block) = &self.array[i] {
+        while let Some(block) = &mut self.array[i] {
             if block.hash == h && block.key == key {
-                overwrite = true;
-                break;
+                block.version = version;
+                block.value.clear();
+                block.value.extend_from_slice(value);
+                return;
             }
             i = (i + 1) % self.array.len();
         }
-        if !overwrite && (self.fill as f64 / self.array.len() as f64) > 0.650 {
+
+        // Resize and re-index before new key-set.
+        if (self.fill as f64 / self.array.len() as f64) > 0.650 {
             self.resize();
+            i = self.index(h);
+            while self.array[i].is_some() {
+                i = (i + 1) % self.array.len();
+            }
         }
-        let version = self.increment();
-        if let Some(block) = &mut self.array[i] {
-            block.version = version;
-            block.value.clear();
-            block.value.extend_from_slice(value);
-        } else {
-            self.array[i] = Some(Block {
-                hash: h,
-                version: version,
-                key: key.to_vec(),
-                value: value.to_vec(),
-            })
-        }
-        if !overwrite {
-            self.fill += 1;
-        }
+
+        self.array[i] = Some(Block {
+            hash: h,
+            version: version,
+            key: key.to_vec(),
+            value: value.to_vec(),
+        });
+        self.fill += 1;
     }
 
     fn resize(&mut self) {
