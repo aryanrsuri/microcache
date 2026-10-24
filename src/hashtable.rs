@@ -16,7 +16,7 @@ pub struct Map {
 impl Map {
     pub fn new() -> Self {
         return Map {
-            array: vec![None; 3],
+            array: vec![None; 4],
             version: [0; 10],
             fill: 0,
         };
@@ -41,8 +41,8 @@ impl Map {
 
     pub fn set(&mut self, key: &[u8], value: &[u8]) {
         let h = self.hash(key);
-        let version = self.increment();
         let mut i = self.index(h);
+        let version = self.increment();
 
         while let Some(block) = &mut self.array[i] {
             if block.hash == h && block.key == key {
@@ -56,7 +56,7 @@ impl Map {
 
         // Resize and re-index before new key-set.
         if (self.fill as f64 / self.array.len() as f64) > 0.650 {
-            self.resize();
+            self.resize(self.array.len() * 2);
             i = self.index(h);
             while self.array[i].is_some() {
                 i = (i + 1) % self.array.len();
@@ -72,16 +72,47 @@ impl Map {
         self.fill += 1;
     }
 
-    // What do I want to return?
-    pub fn delete(&mut self, key: &[u8]) {
-        if let Some(block) = self.get(key) {}
+    // Need to re-understand this implementation
+    pub fn delete(&mut self, key: &[u8]) -> bool {
+        let h = self.hash(key);
+        let mut i = self.index(h);
 
-        panic!("[ERR] Key does not exist.")
+        loop {
+            let Some(block) = &self.array[i] else {
+                return false;
+            };
+
+            if block.hash == h && block.key == key {
+                break;
+            }
+
+            i = (i + 1) % self.array.len()
+        }
+
+        self.array[i] = None;
+        self.fill -= 1;
+
+        let mut start = i;
+        i = (i + 1) % self.array.len();
+
+        while let Some(block) = &self.array[i] {
+            let end = self.index(block.hash);
+            let dist_to_start = (start + self.array.len() - end) % self.array.len();
+            let dist_to_slot = (i + self.array.len() - end) % self.array.len();
+            // Move blocks where path crosses start
+            if dist_to_start < dist_to_slot {
+                self.array[start] = self.array[i].take();
+                start = i;
+            }
+            i = (i + 1) % self.array.len();
+        }
+
+        true
     }
 
-    fn resize(&mut self) {
+    fn resize(&mut self, scalar: usize) {
         let first = std::mem::take(&mut self.array);
-        self.array.resize(first.len() * 2, None);
+        self.array.resize(scalar, None);
         for block in first.into_iter().flatten() {
             let mut i = self.index(block.hash);
             while self.array[i].is_some() {
@@ -157,11 +188,30 @@ mod tests {
     }
 
     #[test]
-    fn can_perf() {
-        let scales = [1_u64, 10, 100, 1_000, 10_000, 100_000, 1_000_000];
-        let mut timings = vec![[std::time::Duration::ZERO; 5]; scales.len()];
+    fn can_delete() {
+        let mut map = Map::new();
+        map.set(b"DEL", b"old");
+        map.set(b"KEEP", b"other");
+        map.set(b"DEL", b"new");
 
-        for iteration in 0..5 {
+        assert_eq!(map.get(b"DEL").unwrap().value, b"new");
+        assert_eq!(map.get(b"KEEP").unwrap().value, b"other");
+
+        map.delete(b"DEL");
+        assert!(map.get(b"DEL").is_none());
+        assert!(map.get(b"KEEP").is_some());
+        let occupied = map.array.iter().flatten().count();
+        assert_eq!(occupied, 1);
+    }
+
+    #[test]
+    fn can_perf() {
+        const ITER: usize = 1;
+        let scales = [1_u64, 10, 100, 1_000, 10_000, 100_000, 1_000_000];
+        let mut timings = vec![[std::time::Duration::ZERO; ITER]; scales.len()];
+
+        println!("");
+        for iteration in 0..ITER {
             for (scale_index, scale) in scales.into_iter().enumerate() {
                 let mut map = Map::new();
                 let start = std::time::Instant::now();
@@ -183,18 +233,20 @@ mod tests {
             }
         }
 
-        println!("\nSummary (5 runs per scale)");
-        println!(
-            "{:>10} {:>14} {:>14} {:>14} {:>14}",
-            "Scale", "Mean total", "Min total", "Max total", "Mean/set (ns)",
-        );
-        for (scale, samples) in scales.into_iter().zip(timings) {
-            let total = samples.iter().copied().sum::<std::time::Duration>();
-            let mean = total / samples.len() as u32;
-            let per_set = total.as_secs_f64() * 1e9 / samples.len() as f64 / scale as f64;
-            let min = samples.iter().min().unwrap();
-            let max = samples.iter().max().unwrap();
-            println!("{scale:>10} {mean:>14.3?} {min:>14.3?} {max:>14.3?} {per_set:>14.3}",);
+        if ITER > 1 {
+            println!("\nSummary ({} runs per scale)", ITER);
+            println!(
+                "{:>10} {:>14} {:>14} {:>14} {:>14}",
+                "Scale", "Mean total", "Min total", "Max total", "Mean/set (ns)",
+            );
+            for (scale, samples) in scales.into_iter().zip(timings) {
+                let total = samples.iter().copied().sum::<std::time::Duration>();
+                let mean = total / samples.len() as u32;
+                let per_set = total.as_secs_f64() * 1e9 / samples.len() as f64 / scale as f64;
+                let min = samples.iter().min().unwrap();
+                let max = samples.iter().max().unwrap();
+                println!("{scale:>10} {mean:>14.3?} {min:>14.3?} {max:>14.3?} {per_set:>14.3}",);
+            }
         }
     }
 }

@@ -7,8 +7,12 @@ fn main() {
     m.set("Bar".as_bytes(), &200_usize.to_le_bytes());
     m.set("Baz".as_bytes(), &140_usize.to_le_bytes());
     m.set("Bob".as_bytes(), &400_usize.to_le_bytes());
-    println!("{:#?}", m.array);
 
     println!("{:#?}", m.get("Baz".as_bytes()).unwrap());
     println!("{:#?}", m.get("Miss".as_bytes()));
+
+    println!("{:#?}", m);
+    _ = m.delete(b"Bob");
+
+    println!("{:#?}", m);
 }
