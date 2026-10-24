@@ -8,7 +8,7 @@ pub struct Block {
 
 #[derive(Debug, Clone)]
 pub struct Map {
-    pub array: Vec<Option<Block>>,
+    array: Vec<Option<Block>>,
     version: [u8; 10],
     fill: u64,
 }
@@ -70,6 +70,13 @@ impl Map {
             value: value.to_vec(),
         });
         self.fill += 1;
+    }
+
+    // What do I want to return?
+    pub fn delete(&mut self, key: &[u8]) {
+        if let Some(block) = self.get(key) {}
+
+        panic!("[ERR] Key does not exist.")
     }
 
     fn resize(&mut self) {

@@ -1,9 +1,0 @@
-I=2
-D=2026-10-18_21-43-10
-S=DONE
-T=Fix O(N^2) in set
-
-perf degreades quadratical as OOM of sets increased
-* Fix was to remove the n^2 self.a (load factor) computation and insted keep a 
-int of inserts to check
-
