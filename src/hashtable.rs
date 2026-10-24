@@ -40,20 +40,21 @@ impl Map {
     }
 
     pub fn set(&mut self, key: &[u8], value: &[u8]) {
-        if (self.fill as f64 / self.array.len() as f64) > 0.650 {
-            self.resize();
-        }
         let h = self.hash(key);
         let k = self.index(h);
         let mut overwrite = false;
         let mut i = k;
 
+        // Check `overwrite` first before a resize
         while let Some(block) = &self.array[i] {
             if block.hash == h && block.key == key {
                 overwrite = true;
                 break;
             }
             i = (i + 1) % self.array.len();
+        }
+        if !overwrite && (self.fill as f64 / self.array.len() as f64) > 0.650 {
+            self.resize();
         }
         let version = self.increment();
         if let Some(block) = &mut self.array[i] {

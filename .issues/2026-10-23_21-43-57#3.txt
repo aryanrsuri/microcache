@@ -1,0 +1,6 @@
+I=3
+D=2026-10-23_21-43-57
+S=DONE
+T=Overwrite growth bug
+
+In set:42 (src/hashtable.rs:42), check for an existing key before resizing. Grow only when a new insertion would exceed the load threshold
