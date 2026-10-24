@@ -163,6 +163,8 @@ impl std::fmt::Debug for Block {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::Map;
 
     #[test]
@@ -206,47 +208,78 @@ mod tests {
 
     #[test]
     fn can_perf() {
-        const ITER: usize = 1;
+        use std::hint::black_box;
+        use std::time::{Duration, Instant};
+
+        const ITER: u32 = 5;
         let scales = [1_u64, 10, 100, 1_000, 10_000, 100_000, 1_000_000];
-        let mut timings = vec![[std::time::Duration::ZERO; ITER]; scales.len()];
 
-        println!("");
-        for iteration in 0..ITER {
-            for (scale_index, scale) in scales.into_iter().enumerate() {
+        println!("\nInsert benchmark ({ITER} runs per size; both maps start empty)");
+        println!(
+            "{:>10} {:>14} {:>14} {:>14} {:>14} {:>10}",
+            "Entries", "Map total", "Std total", "Map ns/set", "Std ns/set", "Std/Map",
+        );
+
+        for scale in scales {
+            let bench_map = || {
                 let mut map = Map::new();
-                let start = std::time::Instant::now();
-
+                let start = Instant::now();
                 for i in 0..scale {
                     let bytes = i.to_le_bytes();
                     map.set(&bytes, &bytes);
                 }
-
-                std::hint::black_box(&map);
+                black_box(&map);
                 let elapsed = start.elapsed();
-                timings[scale_index][iteration] = elapsed;
 
-                println!(
-                    "run={} scale={scale:>7} total={elapsed:?} avg/set={:?}",
-                    iteration + 1,
-                    elapsed / scale as u32,
-                );
+                // Check correctness outside the timed region.
+                assert_eq!(map.fill, scale);
+                for i in 0..scale {
+                    let bytes = i.to_le_bytes();
+                    assert_eq!(map.get(&bytes).unwrap().value.as_slice(), &bytes);
+                }
+                elapsed
+            };
+            let bench_std = || {
+                let mut map = HashMap::<Vec<u8>, Vec<u8>>::new();
+                let start = Instant::now();
+                for i in 0..scale {
+                    let bytes = i.to_le_bytes();
+                    map.insert(bytes.to_vec(), bytes.to_vec());
+                }
+                black_box(&map);
+                let elapsed = start.elapsed();
+
+                assert_eq!(map.len(), scale as usize);
+                for i in 0..scale {
+                    let bytes = i.to_le_bytes();
+                    assert_eq!(map.get(bytes.as_slice()).unwrap().as_slice(), &bytes);
+                }
+                elapsed
+            };
+
+            let mut map_total = Duration::ZERO;
+            let mut std_total = Duration::ZERO;
+            for iteration in 0..ITER {
+                // Alternate order to reduce bias from always running one map first.
+                let (map_elapsed, std_elapsed) = if iteration % 2 == 0 {
+                    (bench_map(), bench_std())
+                } else {
+                    let std_elapsed = bench_std();
+                    (bench_map(), std_elapsed)
+                };
+                map_total += map_elapsed;
+                std_total += std_elapsed;
             }
-        }
 
-        if ITER > 1 {
-            println!("\nSummary ({} runs per scale)", ITER);
+            let map_mean = map_total / ITER;
+            let std_mean = std_total / ITER;
+            let operations = f64::from(ITER) * scale as f64;
+            let map_ns = map_total.as_secs_f64() * 1e9 / operations;
+            let std_ns = std_total.as_secs_f64() * 1e9 / operations;
             println!(
-                "{:>10} {:>14} {:>14} {:>14} {:>14}",
-                "Scale", "Mean total", "Min total", "Max total", "Mean/set (ns)",
+                "{scale:>10} {map_mean:>14.3?} {std_mean:>14.3?} {map_ns:>14.2} {std_ns:>14.2} {:>9.2}x",
+                std_ns / map_ns,
             );
-            for (scale, samples) in scales.into_iter().zip(timings) {
-                let total = samples.iter().copied().sum::<std::time::Duration>();
-                let mean = total / samples.len() as u32;
-                let per_set = total.as_secs_f64() * 1e9 / samples.len() as f64 / scale as f64;
-                let min = samples.iter().min().unwrap();
-                let max = samples.iter().max().unwrap();
-                println!("{scale:>10} {mean:>14.3?} {min:>14.3?} {max:>14.3?} {per_set:>14.3}",);
-            }
         }
     }
 }
