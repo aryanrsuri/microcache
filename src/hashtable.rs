@@ -1,3 +1,10 @@
+//! Implements hashtable for use in cache
+//! LICENCE: AGPL; Aryan Suri 2026
+
+use core::str;
+
+use crate::hashtable::ERROR::KEY_NOT_FOUND;
+
 #[derive(Hash, Clone)]
 pub struct Block {
     hash: u64,
@@ -11,6 +18,13 @@ pub struct Map {
     array: Vec<Option<Block>>,
     version: [u8; 10],
     fill: u64,
+}
+
+// TODO: Use it
+pub enum ERROR {
+    KEY_NOT_FOUND,
+    NOT_VALID_INCR,
+    NOT_VALID_DECR,
 }
 
 impl Map {
@@ -39,16 +53,18 @@ impl Map {
         None
     }
 
+    // TODO: Only set if new key
     pub fn set(&mut self, key: &[u8], value: &[u8]) {
         let h = self.hash(key);
         let mut i = self.index(h);
         let version = self.increment();
 
+        // FIXME: Can I simplify this in accordance w/ `delete` and `incr`
         while let Some(block) = &mut self.array[i] {
             if block.hash == h && block.key == key {
-                block.version = version;
                 block.value.clear();
                 block.value.extend_from_slice(value);
+                block.version = version;
                 return;
             }
             i = (i + 1) % self.array.len();
@@ -72,10 +88,77 @@ impl Map {
         self.fill += 1;
     }
 
+    /// Atomically increment a value by 1.
+    /// Panics if the value is not parsable as an integer.
+    pub fn incr(&mut self, key: &[u8]) -> Option<ERROR> {
+        let h = self.hash(key);
+        let mut i = self.index(h);
+        let k = i;
+        let version = self.increment();
+
+        loop {
+            let Some(block) = &mut self.array[i] else {
+                return Some(KEY_NOT_FOUND);
+            };
+
+            // FIXME: Return ERROR
+            if block.hash == h && block.key == key {
+                block.value = (str::from_utf8(block.value.as_slice())
+                    .expect("[ERR] Value is not an integer.")
+                    .parse::<i64>()
+                    .expect("[ERR] Could not parse integer.")
+                    + 1)
+                .to_string()
+                .into_bytes();
+                block.version = version;
+                break;
+            }
+
+            i = (i + 1) % self.array.len();
+            if i == k {
+                break;
+            }
+        }
+        None
+    }
+
+    pub fn decr(&mut self, key: &[u8]) -> Option<ERROR> {
+        let h = self.hash(key);
+        let mut i = self.index(h);
+        let k = i;
+        let version = self.increment();
+
+        loop {
+            let Some(block) = &mut self.array[i] else {
+                return Some(KEY_NOT_FOUND);
+            };
+
+            // FIXME: Return ERROR
+            if block.hash == h && block.key == key {
+                block.value = (str::from_utf8(block.value.as_slice())
+                    .expect("[ERR] Value is not an integer.")
+                    .parse::<i64>()
+                    .expect("[ERR] Could not parse integer.")
+                    - 1)
+                .to_string()
+                .into_bytes();
+                block.version = version;
+                break;
+            }
+
+            i = (i + 1) % self.array.len();
+            if i == k {
+                break;
+            }
+        }
+        None
+    }
+
     // Need to re-understand this implementation
     pub fn delete(&mut self, key: &[u8]) -> bool {
         let h = self.hash(key);
         let mut i = self.index(h);
+        let k = i;
 
         loop {
             let Some(block) = &self.array[i] else {
@@ -86,7 +169,10 @@ impl Map {
                 break;
             }
 
-            i = (i + 1) % self.array.len()
+            i = (i + 1) % self.array.len();
+            if i == k {
+                return false;
+            }
         }
 
         self.array[i] = None;
@@ -173,6 +259,24 @@ mod tests {
         map.set(b"Bob", b"100");
         assert_eq!(map.get(b"Bob").unwrap().value, b"100");
         assert!(map.get(b"None").is_none());
+    }
+
+    #[test]
+    fn can_incr() {
+        let mut map = Map::new();
+        map.set(b"Bob", b"2");
+        assert_eq!(map.get(b"Bob").unwrap().value, b"2");
+        map.incr(b"Bob");
+        assert_eq!(map.get(b"Bob").unwrap().value, b"3");
+    }
+
+    #[test]
+    fn can_decr() {
+        let mut map = Map::new();
+        map.set(b"Bob", b"2");
+        assert_eq!(map.get(b"Bob").unwrap().value, b"2");
+        map.decr(b"Bob");
+        assert_eq!(map.get(b"Bob").unwrap().value, b"1");
     }
 
     #[test]
