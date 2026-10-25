@@ -10,7 +10,7 @@ pub struct Block {
     hash: u64,
     version: [u8; 10],
     key: Vec<u8>,
-    value: Vec<u8>,
+    pub value: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
@@ -20,7 +20,6 @@ pub struct Map {
     fill: u64,
 }
 
-// TODO: Use it
 pub enum ERROR {
     KEY_NOT_FOUND,
     NOT_VALID_INCR,
@@ -90,18 +89,19 @@ impl Map {
 
     /// Atomically increment a value by 1.
     /// Panics if the value is not parsable as an integer.
-    pub fn incr(&mut self, key: &[u8]) -> Option<ERROR> {
+    pub fn incr(&mut self, key: &[u8]) {
         let h = self.hash(key);
         let mut i = self.index(h);
         let k = i;
         let version = self.increment();
 
         loop {
+            // If key does not exist, initialise it to 1
             let Some(block) = &mut self.array[i] else {
-                return Some(KEY_NOT_FOUND);
+                self.set(key, b"1");
+                break;
             };
 
-            // FIXME: Return ERROR
             if block.hash == h && block.key == key {
                 block.value = (str::from_utf8(block.value.as_slice())
                     .expect("[ERR] Value is not an integer.")
@@ -119,7 +119,6 @@ impl Map {
                 break;
             }
         }
-        None
     }
 
     pub fn decr(&mut self, key: &[u8]) -> Option<ERROR> {
@@ -133,7 +132,6 @@ impl Map {
                 return Some(KEY_NOT_FOUND);
             };
 
-            // FIXME: Return ERROR
             if block.hash == h && block.key == key {
                 block.value = (str::from_utf8(block.value.as_slice())
                     .expect("[ERR] Value is not an integer.")
@@ -233,11 +231,6 @@ impl Map {
 
 impl std::fmt::Debug for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let hex = |bytes: &[u8]| {
-            let digits: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-            format!("0x{digits}")
-        };
-
         f.debug_struct("Block")
             .field("hash", &format!("0x{:016x}", self.hash))
             .field("version", &hex(&self.version))
@@ -245,6 +238,11 @@ impl std::fmt::Debug for Block {
             .field("value", &hex(&self.value))
             .finish()
     }
+}
+
+pub fn hex(bytes: &[u8]) -> String {
+    let digits: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("0x{digits}")
 }
 
 #[cfg(test)]
