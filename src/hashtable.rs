@@ -3,7 +3,8 @@
 
 use core::str;
 
-use crate::hashtable::ERROR::KEY_NOT_FOUND;
+const MAX_KEY_SIZE: usize = 256;
+const MAX_VAL_SIZE: usize = 1_048_576;
 
 #[derive(Hash, Clone)]
 pub struct Block {
@@ -18,12 +19,6 @@ pub struct Map {
     array: Vec<Option<Block>>,
     version: [u8; 10],
     fill: u64,
-}
-
-pub enum ERROR {
-    KEY_NOT_FOUND,
-    NOT_VALID_INCR,
-    NOT_VALID_DECR,
 }
 
 impl Map {
@@ -54,6 +49,12 @@ impl Map {
 
     // TODO: Only set if new key
     pub fn set(&mut self, key: &[u8], value: &[u8]) {
+        if key.len() > MAX_KEY_SIZE {
+            panic!("Key length exceeded")
+        }
+        if value.len() > MAX_VAL_SIZE {
+            panic!("Value length exceeded")
+        }
         let h = self.hash(key);
         let mut i = self.index(h);
         let version = self.increment();
@@ -87,8 +88,6 @@ impl Map {
         self.fill += 1;
     }
 
-    /// Atomically increment a value by 1.
-    /// Panics if the value is not parsable as an integer.
     pub fn incr(&mut self, key: &[u8]) {
         let h = self.hash(key);
         let mut i = self.index(h);
@@ -121,7 +120,7 @@ impl Map {
         }
     }
 
-    pub fn decr(&mut self, key: &[u8]) -> Option<ERROR> {
+    pub fn decr(&mut self, key: &[u8]) {
         let h = self.hash(key);
         let mut i = self.index(h);
         let k = i;
@@ -129,7 +128,7 @@ impl Map {
 
         loop {
             let Some(block) = &mut self.array[i] else {
-                return Some(KEY_NOT_FOUND);
+                break;
             };
 
             if block.hash == h && block.key == key {
@@ -149,7 +148,6 @@ impl Map {
                 break;
             }
         }
-        None
     }
 
     // Need to re-understand this implementation
