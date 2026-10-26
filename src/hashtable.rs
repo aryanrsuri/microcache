@@ -2,9 +2,20 @@
 //! LICENCE: AGPL; Aryan Suri 2026
 
 use core::str;
+use std::time::{Duration, Instant};
+
+use crate::hashtable::CacheError::KeyNotFound;
 
 const MAX_KEY_SIZE: usize = 256;
 const MAX_VAL_SIZE: usize = 1_048_576;
+
+#[derive(Debug)]
+pub enum CacheError {
+    KeyNotFound,
+    KeyLenExceeded,
+    ValueLenExceeded,
+    InvalidValue,
+}
 
 #[derive(Hash, Clone)]
 pub struct Block {
@@ -12,6 +23,7 @@ pub struct Block {
     version: [u8; 10],
     key: Vec<u8>,
     pub value: Vec<u8>,
+    exptime: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +48,11 @@ impl Map {
         let mut i = k;
         while let Some(block) = &self.array[i] {
             if block.hash == h && block.key == key {
+                if let Some(ttl) = block.exptime
+                    && Instant::now() >= ttl
+                {
+                    return None;
+                }
                 return Some(block);
             }
             i = (i + 1) % self.array.len();
@@ -48,15 +65,21 @@ impl Map {
     }
 
     // TODO: Only set if new key
-    pub fn set(&mut self, key: &[u8], value: &[u8]) {
+    pub fn set(
+        &mut self,
+        key: &[u8],
+        value: &[u8],
+        exptime: Option<Duration>,
+    ) -> Result<(), CacheError> {
         if key.len() > MAX_KEY_SIZE {
-            panic!("Key length exceeded")
+            return Err(CacheError::KeyLenExceeded);
         }
         if value.len() > MAX_VAL_SIZE {
-            panic!("Value length exceeded")
+            return Err(CacheError::ValueLenExceeded);
         }
         let h = self.hash(key);
         let mut i = self.index(h);
+        let ttl = exptime.map(|ttl| Instant::now() + ttl);
         let version = self.increment();
 
         // FIXME: Can I simplify this in accordance w/ `delete` and `incr`
@@ -65,7 +88,8 @@ impl Map {
                 block.value.clear();
                 block.value.extend_from_slice(value);
                 block.version = version;
-                return;
+                block.exptime = ttl;
+                return Ok(());
             }
             i = (i + 1) % self.array.len();
         }
@@ -84,33 +108,36 @@ impl Map {
             version: version,
             key: key.to_vec(),
             value: value.to_vec(),
+            exptime: ttl,
         });
         self.fill += 1;
+        Ok(())
     }
 
-    pub fn incr(&mut self, key: &[u8]) {
+    pub fn incr(&mut self, key: &[u8]) -> Result<i64, CacheError> {
         let h = self.hash(key);
         let mut i = self.index(h);
         let k = i;
-        let version = self.increment();
 
         loop {
             // If key does not exist, initialise it to 1
             let Some(block) = &mut self.array[i] else {
-                self.set(key, b"1");
-                break;
+                self.set(key, b"1", None)?;
+                return Ok(1);
             };
 
             if block.hash == h && block.key == key {
-                block.value = (str::from_utf8(block.value.as_slice())
-                    .expect("[ERR] Value is not an integer.")
+                let new = str::from_utf8(block.value.as_slice())
+                    .map_err(|_| CacheError::InvalidValue)?
                     .parse::<i64>()
-                    .expect("[ERR] Could not parse integer.")
-                    + 1)
-                .to_string()
-                .into_bytes();
+                    .map_err(|_| CacheError::InvalidValue)?
+                    .checked_add(1)
+                    .ok_or(CacheError::InvalidValue)?;
+                let version = self.increment();
+                let block = self.array[i].as_mut().unwrap();
+                block.value = new.to_string().into_bytes();
                 block.version = version;
-                break;
+                return Ok(new);
             }
 
             i = (i + 1) % self.array.len();
@@ -118,29 +145,33 @@ impl Map {
                 break;
             }
         }
+        return Err(KeyNotFound);
     }
 
-    pub fn decr(&mut self, key: &[u8]) {
+    pub fn decr(&mut self, key: &[u8]) -> Result<i64, CacheError> {
         let h = self.hash(key);
         let mut i = self.index(h);
         let k = i;
-        let version = self.increment();
 
         loop {
+            // Not sure if this is a good default behaviour
             let Some(block) = &mut self.array[i] else {
-                break;
+                self.set(key, b"0", None)?;
+                return Ok(0);
             };
 
             if block.hash == h && block.key == key {
-                block.value = (str::from_utf8(block.value.as_slice())
-                    .expect("[ERR] Value is not an integer.")
+                let new = str::from_utf8(block.value.as_slice())
+                    .map_err(|_| CacheError::InvalidValue)?
                     .parse::<i64>()
-                    .expect("[ERR] Could not parse integer.")
-                    - 1)
-                .to_string()
-                .into_bytes();
+                    .map_err(|_| CacheError::InvalidValue)?
+                    .checked_sub(1)
+                    .ok_or(CacheError::InvalidValue)?;
+                let version = self.increment();
+                let block = self.array[i].as_mut().unwrap();
+                block.value = new.to_string().into_bytes();
                 block.version = version;
-                break;
+                return Ok(new);
             }
 
             i = (i + 1) % self.array.len();
@@ -148,6 +179,8 @@ impl Map {
                 break;
             }
         }
+
+        return Err(KeyNotFound);
     }
 
     // Need to re-understand this implementation
@@ -222,7 +255,7 @@ impl Map {
             .rposition(|&b| b != u8::MAX)
             .expect("version exhausted");
         self.version[i] += 1;
-        self.version[i + 1..8].fill(0);
+        self.version[i + 1..10].fill(0);
         self.version
     }
 }
@@ -245,12 +278,14 @@ pub fn hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use super::Map;
 
     #[test]
     fn can_get() {
         let mut map = Map::new();
-        map.set(b"Bob", b"100");
+        map.set(b"Bob", b"100", None).unwrap();
         assert_eq!(map.get(b"Bob").unwrap().value, b"100");
         assert!(map.get(b"None").is_none());
     }
@@ -258,41 +293,64 @@ mod tests {
     #[test]
     fn can_incr() {
         let mut map = Map::new();
-        map.set(b"Bob", b"2");
+        map.set(b"Bob", b"2", None).unwrap();
         assert_eq!(map.get(b"Bob").unwrap().value, b"2");
-        map.incr(b"Bob");
+        map.incr(b"Bob").unwrap();
         assert_eq!(map.get(b"Bob").unwrap().value, b"3");
     }
 
     #[test]
     fn can_decr() {
         let mut map = Map::new();
-        map.set(b"Bob", b"2");
+        map.set(b"Bob", b"2", None).unwrap();
         assert_eq!(map.get(b"Bob").unwrap().value, b"2");
-        map.decr(b"Bob");
+        map.decr(b"Bob").unwrap();
         assert_eq!(map.get(b"Bob").unwrap().value, b"1");
     }
 
     #[test]
+    fn can_expire() {
+        let mut map = Map::new();
+        map.set(b"Bob", b"1", Some(Duration::from_secs(1))).unwrap();
+        let end = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < end {}
+        assert!(map.get(b"Bob").is_none());
+    }
+
+    #[test]
+    fn can_persist() {
+        let mut map = Map::new();
+        map.set(b"Bob", b"1", Some(Duration::from_secs(100)))
+            .unwrap();
+        let end = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < end {}
+        assert_eq!(map.get(b"Bob").unwrap().value, b"1");
+    }
+    #[test]
     fn can_resize() {
         let mut map = Map::new();
-        map.set(b"a", b"old");
-        map.set(b"b", b"other");
-        map.set(b"a", b"new");
+        map.set(b"a", b"old", None).unwrap();
+        map.set(b"b", b"other", None).unwrap();
+        map.set(b"a", b"new", None).unwrap();
+        map.set(b"c", b"new", None).unwrap();
+        map.set(b"d", b"new", None).unwrap();
+        map.set(b"e", b"new", None).unwrap();
+        map.set(b"f", b"new", None).unwrap();
+        map.set(b"g", b"new", None).unwrap();
 
         assert_eq!(map.get(b"a").unwrap().value, b"new");
         assert_eq!(map.get(b"b").unwrap().value, b"other");
 
         let occupied = map.array.iter().flatten().count();
-        assert_eq!(occupied, 2);
+        assert_eq!(occupied, 7);
     }
 
     #[test]
     fn can_delete() {
         let mut map = Map::new();
-        map.set(b"DEL", b"old");
-        map.set(b"KEEP", b"other");
-        map.set(b"DEL", b"new");
+        map.set(b"DEL", b"old", None).unwrap();
+        map.set(b"KEEP", b"other", None).unwrap();
+        map.set(b"DEL", b"new", None).unwrap();
 
         assert_eq!(map.get(b"DEL").unwrap().value, b"new");
         assert_eq!(map.get(b"KEEP").unwrap().value, b"other");

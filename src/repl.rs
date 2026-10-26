@@ -1,4 +1,7 @@
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    time::Duration,
+};
 
 use crate::hashtable::Map;
 
@@ -14,13 +17,31 @@ pub fn repl(mut m: Map) {
         let parts: Vec<&str> = buffer.split_whitespace().collect();
 
         match parts.as_slice() {
-            [] => {}
-            ["SET", key, value] => m.set(key.as_bytes(), value.as_bytes()),
+            ["SET", key, value] => match m.set(key.as_bytes(), value.as_bytes(), None) {
+                Ok(_) => println!("OK"),
+                Err(err) => println!("{:?}", err),
+            },
+            ["SET", key, value, exptime] => {
+                match m.set(
+                    key.as_bytes(),
+                    value.as_bytes(),
+                    Some(Duration::from_secs(exptime.parse::<u64>().unwrap())),
+                ) {
+                    Ok(_) => println!("OK"),
+                    Err(err) => println!("{:?}", err),
+                }
+            }
             ["GET", key] => match m.get(key.as_bytes()) {
                 Some(block) => {
                     let value =
                         String::from_utf8(block.value.clone()).expect("Could not parse value.");
                     println!("{:?}", value);
+                }
+                None => println!("Key not found."),
+            },
+            ["GET_BLOCK", key] => match m.get(key.as_bytes()) {
+                Some(block) => {
+                    println!("{:?}", block);
                 }
                 None => println!("Key not found."),
             },
@@ -31,22 +52,19 @@ pub fn repl(mut m: Map) {
                     println!("Key not found")
                 }
             }
-            ["INCR", key] => {
-                m.incr(key.as_bytes());
-                let value =
-                    String::from_utf8(m.get(key.as_bytes()).expect("Key not found.").value.clone())
-                        .expect("Could not parse value.");
-                println!("{:?}", value);
-            }
-            ["DECR", key] => {
-                m.decr(key.as_bytes());
-                let value =
-                    String::from_utf8(m.get(key.as_bytes()).expect("Key not found.").value.clone())
-                        .expect("Could not parse value.");
-                println!("{:?}", value);
-            }
+            ["INCR", key] => match m.incr(key.as_bytes()) {
+                Ok(n) => println!("{}", n),
+                Err(err) => println!("{:?}", err),
+            },
+            ["DECR", key] => match m.decr(key.as_bytes()) {
+                Ok(n) => println!("{}", n),
+                Err(err) => println!("{:?}", err),
+            },
+            [] => {}
             [".exit"] => break,
-            [".help"] => println!("SET key value; GET key; INCR key; DECR key; .exit; .help"),
+            [".help"] => {
+                println!("SET key value; GET key; GET_BLOCK key; INCR key; DECR key; .exit; .help")
+            }
             _ => println!("repl$ invalid command, see .help for commands"),
         }
     }

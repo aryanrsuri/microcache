@@ -1,5 +1,5 @@
 I=6
 D=2026-10-24T08:04:44+00:00
 S=open
-T=Add exptime
+T=TTL/exptime
 

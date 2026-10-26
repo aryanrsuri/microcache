@@ -21,7 +21,7 @@ pub fn compare() {
             let start = Instant::now();
             for i in 0..scale {
                 let bytes = i.to_le_bytes();
-                map.set(&bytes, &bytes);
+                map.set(&bytes, &bytes, None).unwrap();
             }
             black_box(&map);
             let elapsed = start.elapsed();

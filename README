@@ -4,9 +4,3 @@
 
 (Just tinkering). Need a cache thats very fast, works on metal across distibuted devices? Use memcached.
 
-
-
-* LRU
-* TTL
-* Namespaces?
-* Stream structure

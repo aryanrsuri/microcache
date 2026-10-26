@@ -1,0 +1,5 @@
+I=16
+D=2026-10-26T00:53:52+00:00
+S=open
+T=stream data structure
+

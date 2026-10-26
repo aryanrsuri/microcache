@@ -1,5 +1,5 @@
 I=10
 D=2026-10-24T08:05:21+00:00
 S=open
-T=Namespacing?
+T=Add pseudo-namespacing support
 
