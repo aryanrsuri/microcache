@@ -39,12 +39,6 @@ pub fn repl(mut m: Map) {
                 }
                 None => println!("Key not found."),
             },
-            ["GET_BLOCK", key] => match m.get(key.as_bytes()) {
-                Some(block) => {
-                    println!("{:?}", block);
-                }
-                None => println!("Key not found."),
-            },
             ["DEL", key] => {
                 if m.delete(key.as_bytes()) {
                     println!("OK");

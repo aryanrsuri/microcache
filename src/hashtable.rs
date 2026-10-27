@@ -46,13 +46,18 @@ impl Map {
         let h = self.hash(key);
         let k = self.index(h);
         let mut i = k;
-        while let Some(block) = &self.array[i] {
+        loop {
+            let Some(block) = &self.array[i] else {
+                break;
+            };
             if block.hash == h && block.key == key {
                 if let Some(ttl) = block.exptime
                     && Instant::now() >= ttl
                 {
-                    return None;
+                    self.delete(key);
+                    break;
                 }
+                let block = self.array[i].as_ref().unwrap();
                 return Some(block);
             }
             i = (i + 1) % self.array.len();
@@ -127,6 +132,12 @@ impl Map {
             };
 
             if block.hash == h && block.key == key {
+                if let Some(ttl) = block.exptime
+                    && Instant::now() >= ttl
+                {
+                    self.set(key, b"1", None)?;
+                    return Ok(1);
+                }
                 let new = str::from_utf8(block.value.as_slice())
                     .map_err(|_| CacheError::InvalidValue)?
                     .parse::<i64>()
@@ -154,13 +165,18 @@ impl Map {
         let k = i;
 
         loop {
-            // Not sure if this is a good default behaviour
             let Some(block) = &mut self.array[i] else {
-                self.set(key, b"0", None)?;
-                return Ok(0);
+                self.set(key, b"-1", None)?;
+                return Ok(-1);
             };
 
             if block.hash == h && block.key == key {
+                if let Some(ttl) = block.exptime
+                    && Instant::now() >= ttl
+                {
+                    self.set(key, b"-1", None)?;
+                    return Ok(-1);
+                }
                 let new = str::from_utf8(block.value.as_slice())
                     .map_err(|_| CacheError::InvalidValue)?
                     .parse::<i64>()
