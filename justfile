@@ -7,7 +7,7 @@ build:
   odin build .
 # run program
 run:
-  ./mc
+  ./microcache
 # build and run proram
 debug:
-  odin build . && ./mc
+  odin build . && ./microcache

@@ -1,0 +1,6 @@
+I=10
+D=2026-11-15T23:22:35+00:00
+S=open
+T=Stats and checks
+
+Report items, accounted bytes, hits, misses, expirations, and evictions. Test with an existing memcached client and verify repeated writes reuse slots without continuing memory growth.

@@ -1,0 +1,6 @@
+I=4
+D=2026-11-15T23:22:35+00:00
+S=open
+T=Delete
+
+Remove the key, free its payload, update byte usage, and recycle its item slot. Deleting a missing key should be harmless.
