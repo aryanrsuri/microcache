@@ -1,6 +1,3 @@
 ------------
  microcache
 ------------
-
-(Just tinkering). Need a cache thats very fast, works on metal across distibuted devices? Use memcached.
-

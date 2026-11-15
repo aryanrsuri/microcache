@@ -1,8 +1,13 @@
-build:
-	cargo build --release
+alias b := build
+alias d := debug
+alias r := run
+
+# build program
+build: 
+  odin build .
+# run program
 run:
-  cargo run --release 
-test:
-  cargo test --release --color always --message-format human -- --nocapture --test-threads=1
-benchmark:
-  cargo run --release -- --benchmark
+  ./mc
+# build and run proram
+debug:
+  odin build . && ./mc
