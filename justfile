@@ -11,3 +11,6 @@ run:
 # build and run proram
 debug:
   odin build . && ./microcache
+
+check:
+  odin check .

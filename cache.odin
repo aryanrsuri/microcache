@@ -6,7 +6,7 @@ import "core:sync"
 // MUST Not be copied after first use
 
 cache :: struct {
-	lock:       sync.RW_Mutex,
+	lock:       sync.Mutex,
 	index:      map[string]int,
 	items:      [dynamic]item,
 	free:       [dynamic]int,
@@ -39,40 +39,56 @@ cache_free :: proc(c: ^cache) {
 }
 
 cache_set :: proc(c: ^cache, key: []u8, value: []u8, expires_at: i64) -> bool {
-	sync.shared_lock(&c.lock)
-	defer sync.shared_unlock(&c.lock)
+	sync.mutex_lock(&c.lock)
+	defer sync.mutex_unlock(&c.lock)
 
 
-	// put a new item at the head of the items array
-	// store the index of the new item in index
-	// update newest & oldest
-	// update used_bytes
-	// repack if max_bytes is close to full
-
-	str := cast(string)key
 	if c.newest == -1 {
-		item, used := item_create(key, value, -1, -1, -1)
-		inject_at(&c.items, 0, item)
-		c.index[str] = 0
+		item, used := item_create(key, value, -1, -1, expires_at)
+		assign_at(&c.items, 0, item)
+		c.index[cast(string)item.bytes[:item.key_len]] = 0
 		c.newest = 0
 		c.oldest = 0
 		c.used_bytes += used
 		return true
 	}
 
-	index, exists := c.index[str]
+	index, exists := c.index[cast(string)key]
 	if exists {
-		item := c.items[index]
-		used := item_update_value(&item, key, expires_at)
+		item := &c.items[index]
+		delete_key(&c.index, string(item.bytes[:item.key_len]))
+		used := item_update_value(item, value, expires_at)
+		c.index[string(item.bytes[:item.key_len])] = index
 		c.used_bytes += used
 	} else {
 		c.newest += 1
-		item, used := item_create(key, value, -1, -1, -1)
-		c.items[c.newest] = item
-		c.index[str] = c.newest
+		item, used := item_create(key, value, -1, -1, expires_at)
+		assign_at(&c.items, c.newest, item)
+		c.index[cast(string)item.bytes[:item.key_len]] = c.newest
 		c.used_bytes += used
 	}
 
 	return true
 
+}
+
+cache_get :: proc(c: ^cache, key: []u8) -> Maybe([]u8) {
+	sync.mutex_lock(&c.lock)
+	defer sync.mutex_unlock(&c.lock)
+
+	if c.newest == -1 {
+		return nil
+	}
+
+	index, exists := c.index[cast(string)key]
+	if exists {
+		item := &c.items[index]
+		value := make([]u8, item.val_len)
+		copy_slice(value, item.bytes[item.key_len:item.val_len])
+
+		return value
+	}
+
+
+	return nil
 }
