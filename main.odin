@@ -38,6 +38,17 @@ main :: proc() {
 	if ok do fmt.printf("%s %s\n", k, value)
 
 
-	we := cache_get(&c, []u8{})
+	we := cache_get(&c, []u8{2})
 	fmt.printf("%v\n", we)
+
+
+	fmt.printf("current k value is %v\n", k)
+	ok = cache_delete(&c, transmute([]u8)k)
+	fmt.printf("deleting k...\n")
+	if ok {
+		we := cache_get(&c, transmute([]u8)k)
+		fmt.printf("current k value is %v\n", we)
+	}
+
+
 }

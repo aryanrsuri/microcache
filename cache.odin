@@ -84,11 +84,34 @@ cache_get :: proc(c: ^cache, key: []u8) -> Maybe([]u8) {
 	if exists {
 		item := &c.items[index]
 		value := make([]u8, item.val_len)
-		copy_slice(value, item.bytes[item.key_len:item.val_len])
+		copy_slice(value, item.bytes[item.key_len:item.key_len + item.val_len])
 
 		return value
 	}
 
 
 	return nil
+}
+
+cache_delete :: proc(c: ^cache, key: []u8) -> bool {
+	sync.mutex_lock(&c.lock)
+	defer sync.mutex_unlock(&c.lock)
+	if c.newest == -1 {
+		return false
+	}
+
+
+	index, exists := c.index[string(key)]
+	if exists {
+		item := &c.items[index]
+		c.used_bytes -= (item.key_len + item.val_len)
+		delete_key(&c.index, string(item.bytes[:item.key_len]))
+		delete_dynamic_array(item.bytes)
+		ordered_remove_dynamic_array(&c.items, index)
+		return true
+	}
+
+
+	return false
+
 }
