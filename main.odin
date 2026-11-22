@@ -1,17 +1,16 @@
 package main
 
-import "core:fmt"
-import "core:math/rand"
-
-
 main :: proc() {
 	defer free_all(context.temp_allocator)
-	c := cache_create(10_000_000)
+	c := cache_create(1_000_000)
 	defer {
 		cache_free(&c)
 	}
 
+	repl_loop(&c)
 
+
+	/*
 	for i: u128 = 0; i < 10; i += 1 {
 		key := fmt.tprintf("key-%03x-%d", rand.uint64(), i)
 		value := fmt.tprintf("val-%03x-%d", rand.uint64(), i)
@@ -49,6 +48,6 @@ main :: proc() {
 		we := cache_get(&c, transmute([]u8)k)
 		fmt.printf("current k value is %v\n", we)
 	}
-
+  */
 
 }
